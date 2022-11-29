@@ -123,7 +123,7 @@ class FPDE(PDE):
             loss_fn(bkd.zeros(bkd.tensor_shape(fi), dtype=config.real(bkd.lib)), fi) for fi in f
         ] + [bkd.constant(0, dtype=config.real(bkd.lib)) for _ in self.bcs]
 
-    @run_if_all_none("train_x", "train_y")
+    # @run_if_all_none("train_x", "train_y")
     def train_next_batch(self, batch_size=None):
         if self.disc.meshtype == "static":
             if self.geom.idstr != "Interval":
@@ -356,10 +356,11 @@ class Fractional:
         h = 1 / self.disc.resolution[-1]
         min_h = self.geom.mindist2boundary(self.x0)
         if min_h < h:
-            print(
-                "Warning: mesh step size %f is larger than the boundary distance %f."
-                % (h, min_h)
-            )
+            pass
+            # print(
+            #     "Warning: mesh step size %f is larger than the boundary distance %f."
+            #     % (h, min_h)
+            # )
 
     def _init_weights(self):
         """If ``disc.meshtype = 'static'``, then n is number of points;
@@ -370,7 +371,7 @@ class Fractional:
             if self.disc.meshtype == "static"
             else self.dynamic_dist2npts(self.geom.diam) + 1
         )
-        w = [bkd.constant(1.0, dtype=config.real(bkd.lib))]
+        w = [1.0, ]
         for j in range(1, n):
             w.append(w[-1] * (j - 1 - self.alpha) / j)
         return array_ops_compat.convert_to_array(w)
@@ -503,9 +504,10 @@ class Fractional:
             for i in range(1, self.disc.resolution[0] - 1):
                 # first order
                 int_mat[i, 1: i + 2] = np.squeeze(np.flipud(self.get_weight(i)))
-                int_mat[i, i - 1: -1] += self.get_weight(
+                int_mat[i, i - 1: -1] += (self.get_weight(
                     self.disc.resolution[0] - 1 - i
-                ).numpy().squeeze()
+                ).numpy().squeeze() if bkd.get_preferred_backend() == "paddle" 
+                    else self.get_weight(self.disc.resolution[0] - 1 - i))
                 # second order
                 # int_mat[i, 0:i+2] = np.flipud(self.modify_second_order(w=self.get_weight(i)))
                 # int_mat[i, i-1:] += self.modify_second_order(w=self.get_weight(self.disc.resolution[0]-1-i))
@@ -560,7 +562,7 @@ class Fractional:
             raise AssertionError("No dynamic points")
 
         if sparse:
-            print("Generating sparse fractional matrix...")
+            # print("Generating sparse fractional matrix...")
             dense_shape = (self.x0.shape[0], self.x.shape[0])
             indices, values = [], []
             beg = self.x0.shape[0]
