@@ -1,10 +1,11 @@
 """paddle backend implementation"""
-from distutils.version import LooseVersion
-
+# from distutils.version import LooseVersion
+from packaging import version
 import paddle
 
-if LooseVersion(paddle.__version__) < LooseVersion("2.3.0") and LooseVersion(paddle.__version__) != LooseVersion("0.0.0") :
-    raise RuntimeError("DeepXDE requires PaddlePaddle>=2.3.0")
+if version.Version(paddle.__version__) < version.Version("2.3.0") \
+    and version.Version(paddle.__version__) != version.Version("0.0.0"):
+    raise RuntimeError("DeepXDE requires PaddlePaddle>=2.3.0 or develop")
 
 if paddle.device.is_compiled_with_cuda():
     paddle.device.set_device("gpu")
@@ -156,11 +157,11 @@ def size(tensor):
 
 
 def SparseTensor(indices, values, shape):
-    x = [p[0] for p in indices]  # [num_of_nonzeros, ]
-    y = [p[1] for p in indices]  # [num_of_nonzeros, ]
+    x = [p[0] for p in indices]
+    y = [p[1] for p in indices]
     indices = paddle.stack(
         [paddle.to_tensor(x), paddle.to_tensor(y)]
-    )  # [2, num_of_nonzeros]
+    )
     return paddle.sparse.sparse_coo_tensor(indices=indices, values=values, shape=list(shape), stop_gradient=False)
 
 

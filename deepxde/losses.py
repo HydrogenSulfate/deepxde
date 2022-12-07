@@ -14,6 +14,10 @@ def mean_absolute_percentage_error(y_true, y_pred):
     return tf.keras.losses.MeanAbsolutePercentageError()(y_true, y_pred)
 
 
+def squared_error(y_true, y_pred):
+    return bkd.square(y_true - y_pred)
+
+
 def mean_squared_error(y_true, y_pred):
     # Warning:
     # - Do not use ``tf.losses.mean_squared_error``, which casts `y_true` and `y_pred` to ``float32``.
@@ -28,12 +32,12 @@ def mean_squared_error(y_true, y_pred):
         # This ugly trick should be fixed when we support reduce_mean in prim.
         num = 1
         for i in y_true.shape:
-            if i != 0 : 
+            if i != 0 :
                 num *= i
         return bkd.reduce_sum(bkd.square(y_true - y_pred))/num
     else:
         return bkd.reduce_mean(bkd.square(y_true - y_pred))
-    
+
 
 def mean_l2_relative_error(y_true, y_pred):
     return bkd.reduce_mean(bkd.norm(y_true - y_pred, axis=1) / bkd.norm(y_true, axis=1))

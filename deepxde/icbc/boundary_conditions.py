@@ -35,6 +35,7 @@ class BC(ABC):
 
     def __init__(self, geom, on_boundary, component):
         self.geom = geom
+        # x是实数数组，on是它对应的bool数组
         self.on_boundary = lambda x, on: np.array(
             [on_boundary(x[i], on[i]) for i in range(len(x))]
         )
@@ -45,7 +46,10 @@ class BC(ABC):
         )
 
     def filter(self, X):
-        return X[self.on_boundary(X, self.geom.on_boundary(X))]
+        # X是点, self.geom.on_boundary是逐元素判断是否在边界的函数，self.geom.on_boundary(X)是一个bool数组
+        # 返回在geo边界上的点
+        ret = X[self.on_boundary(X, self.geom.on_boundary(X))]
+        return ret
 
     def collocation_points(self, X):
         return self.filter(X)
@@ -183,10 +187,18 @@ class PointSetBC:
         self.component = component
 
     def collocation_points(self, X):
-        return self.points
+        # return self.points
+        nprocs, rank = utils.get_nprocs_and_rank()
+        local_points = utils.array_ops_compat.padding_array(self.points, nprocs)
+        local_points = utils.array_ops_compat.sub(local_points, nprocs, rank)
+        return local_points
 
     def error(self, X, inputs, outputs, beg, end, aux_var=None):
-        return outputs[beg:end, self.component : self.component + 1] - self.values
+        # return outputs[beg:end, self.component : self.component + 1] - self.values
+        nprocs, rank = utils.get_nprocs_and_rank()
+        local_values = utils.array_ops_compat.padding_array(self.values, nprocs)
+        local_values = utils.array_ops_compat.sub(local_values, nprocs, rank)
+        return outputs[beg:end, self.component : self.component + 1] - local_values
 
 
 def npfunc_range_autocache(func):

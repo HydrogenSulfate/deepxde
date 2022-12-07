@@ -50,3 +50,28 @@ def zero_padding(array, pad_width):
     if is_tensor(array):
         return tf.pad(array, tf.constant(pad_width))
     return np.pad(array, pad_width)
+
+
+def padding_array(array, nprocs):
+    npad = (nprocs - len(array) % nprocs) % nprocs  # pad npad elements, %nprocs at last in case of nprocs=1
+    if npad == 0:
+        return array
+    if isinstance(array, np.ndarray):
+        datapad = array[-1, :].reshape([-1, array[-1, :].shape[0]])
+        for i in range(npad):
+            array = np.append(array, datapad, axis=0)
+    return array
+
+
+def sub(array, nprocs, n):
+    """sub
+
+    Args:
+        nprocs (int): number of GPUs
+        n (int): index of GPU
+    """
+    N = len(array)
+    subN = N // nprocs
+    s = subN * n
+    e = subN * (n + 1)
+    return array[s: e]

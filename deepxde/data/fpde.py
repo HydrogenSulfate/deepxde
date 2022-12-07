@@ -4,6 +4,7 @@ import math
 
 from .. import backend as bkd
 import numpy as np
+import paddle.distributed as dist
 
 from .pde import PDE
 from .. import config
@@ -161,6 +162,22 @@ class FPDE(PDE):
 
         self.train_x = np.vstack((x_bc, X))
         self.train_y = self.soln(self.train_x) if self.soln else None
+
+        nprocs = dist.get_world_size()
+        if nprocs > 1:
+            self.train_x = array_ops_compat.padding_array(self.train_x, nprocs)
+            rank = dist.get_rank()
+            n = len(self.train_x)
+            local_n = n // nprocs
+            self.train_x = self.train_x[rank*local_n:(rank+1)*local_n]
+
+            self.train_y = array_ops_compat.padding_array(self.train_y, nprocs)
+            rank = dist.get_rank()
+            n = len(self.train_y)
+            local_n = n // nprocs
+            self.train_y = self.train_y[rank*local_n:(rank+1)*local_n]
+
+        print(f"self.train_x.shape: {self.train_x.shape}, self.train_y.shape: {self.train_y.shape}")
         return self.train_x, self.train_y
 
     @run_if_all_none("test_x", "test_y")
@@ -177,6 +194,23 @@ class FPDE(PDE):
             self.frac_test = Fractional(self.alpha, self.geom, self.disc, x_f)
             self.test_x = self.frac_test.get_x()
         self.test_y = self.soln(self.test_x) if self.soln else None
+
+        nprocs = dist.get_world_size()
+        if nprocs > 1:
+            self.n_test_x = len(self.test_x)
+            self.test_x = array_ops_compat.padding_array(self.test_x, nprocs)
+            rank = dist.get_rank()
+            n = len(self.test_x)
+            local_n = n // nprocs
+            self.test_x = self.test_x[rank*local_n:(rank+1)*local_n]
+            self.n_test_y = len(self.test_y)
+            self.test_y = array_ops_compat.padding_array(self.test_y, nprocs)
+            rank = dist.get_rank()
+            n = len(self.test_y)
+            local_n = n // nprocs
+            self.test_y = self.test_y[rank*local_n:(rank+1)*local_n]
+            print(f"self.test_x.shape: {self.test_x.shape}, self.test_y.shape: {self.test_y.shape}")
+
         return self.test_x, self.test_y
 
     def test_points(self):
@@ -369,10 +403,11 @@ class Fractional:
         h = 1 / self.disc.resolution[-1]
         min_h = self.geom.mindist2boundary(self.x0)
         if min_h < h:
-            print(
-                "Warning: mesh step size %f is larger than the boundary distance %f."
-                % (h, min_h)
-            )
+            pass
+            # print(
+            #     "Warning: mesh step size %f is larger than the boundary distance %f."
+            #     % (h, min_h)
+            # )
 
     def _init_weights(self):
         """If ``disc.meshtype = 'static'``, then n is number of points;
@@ -573,8 +608,10 @@ class Fractional:
             raise AssertionError("No dynamic points")
 
         if sparse:
-            print("Generating sparse fractional matrix...")
+            # print("Generating sparse fractional matrix...")
             dense_shape = (self.x0.shape[0], self.x.shape[0])
+            # print("dense_shape", dense_shape)
+            # exit(0)
             indices, values = [], []
             beg = self.x0.shape[0]
             for i in range(self.x0.shape[0]):
@@ -582,6 +619,7 @@ class Fractional:
                     indices.append([i, beg])
                     beg += 1
                 values = array_ops_compat.hstack((values, self.w[i]))
+            # print(f"self.w.sum = {sum([x.sum() for x in self.w]).item():.10f}")
             return indices, values, dense_shape
 
         print("Generating dense fractional matrix...")

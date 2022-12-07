@@ -71,13 +71,13 @@ class PFNN(NN):
         self.new_save = False
 
         def make_linear(n_input, n_output):
-            if isinstance(task_name, str) and os.path.exists(f"./{task_name}/weight_{self.p}.npy") and os.path.exists(f"./{task_name}/bias_{self.p}.npy"):
+            if isinstance(task_name, str) and os.path.exists(f"./{task_name}/linears.{self.p}.weight.npy") and os.path.exists(f"./{task_name}/linears.{self.p}.bias.npy"):
                 print("load param from file")
                 linear = paddle.nn.Linear(
                     n_input,
                     n_output,
-                    weight_attr=ParamAttr(initializer=Assign(np.load(f"./{task_name}/weight_{self.p}.npy").astype("float32"))),
-                    bias_attr=ParamAttr(initializer=Assign(np.load(f"./{task_name}/bias_{self.p}.npy").astype("float32")))
+                    weight_attr=ParamAttr(initializer=Assign(np.load(f"./{task_name}/linears.{self.p}.weight.npy").astype("float32"))),
+                    bias_attr=ParamAttr(initializer=Assign(np.load(f"./{task_name}/linears.{self.p}.bias.npy").astype("float32")))
                 )
                 self.p += 1
             else:
@@ -85,8 +85,8 @@ class PFNN(NN):
                 linear = paddle.nn.Linear(n_input, n_output)
                 initializer(linear.weight)
                 initializer_zero(linear.bias)
-                # np.save(f"./{task_name}/weight_{self.p}.npy", linear.weight.numpy())
-                # np.save(f"./{task_name}/bias_{self.p}.npy", linear.bias.numpy())
+                # np.save(f"./{task_name}/linears.{self.p}.weight.npy", linear.weight.numpy())
+                # np.save(f"./{task_name}/linears.{self.p}.bias.npy", linear.bias.numpy())
                 self.p += 1
                 self.new_save = True
             return linear

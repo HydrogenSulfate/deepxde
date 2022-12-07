@@ -9,8 +9,18 @@ import deepxde.config as config
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.integrate import solve_bvp
+import paddle.distributed as dist
+import paddle
 
 config.set_random_seed(0)
+
+
+world_size = dist.get_world_size()
+if world_size > 1:
+    dist.init_parallel_env()
+    config.set_random_seed(42 + dist.get_rank())
+else:
+    config.set_random_seed(42)
 
 l = 0.01
 
@@ -65,11 +75,18 @@ data = dde.data.PDE(
     num_test=1000,
 )
 
-net = dde.nn.PFNN([1, [20, 20], [20, 20], 2], "tanh", "Glorot uniform")
-model = dde.Model(data, net)
+net = dde.nn.PFNN([1, [20, 20], [20, 20], 2], "tanh", "Glorot uniform", "diffusion_reaction_rate")
+
+ckpt = paddle.load("./diffusion_reaction_rate/net_ddp.pdparams")
+for name, param in ckpt.items():
+    if name not in net.state_dict() or param.shape != net.state_dict()[name].shape:
+        raise ValueError
+net.load_dict(ckpt)
+
+model = dde.Model(data, net, world_size > 1)
 model.compile("adam", lr=1e-3)
 
-losshistory, train_state = model.train(iterations=20000)
+losshistory, train_state = model.train(iterations=0)
 
 x = geom.uniform_points(500)
 yhat = model.predict(x)

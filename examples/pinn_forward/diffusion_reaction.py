@@ -1,7 +1,17 @@
 """Backend supported: tensorflow.compat.v1, tensorflow, pytorch"""
 import deepxde as dde
 import numpy as np
+import deepxde.config as config
 import deepxde.backend as bkd
+import paddle.distributed as dist
+
+
+world_size = dist.get_world_size()
+if world_size > 1:
+    dist.init_parallel_env()
+    config.set_random_seed(42 + dist.get_rank())
+else:
+    config.set_random_seed(42)
 
 
 def pde(x, y):

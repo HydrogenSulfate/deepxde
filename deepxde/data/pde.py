@@ -1,11 +1,12 @@
 import numpy as np
-
+import deepxde as dde
 from .data import Data
 from .. import backend as bkd
 from .. import config
 from ..backend import backend_name
-from ..utils import get_num_args, run_if_all_none
+from ..utils import get_num_args, run_if_all_none, array_ops_compat, get_nprocs_and_rank, gather_nprocs
 import paddle
+import paddle.distributed as dist
 
 
 class PDE(Data):
@@ -94,6 +95,10 @@ class PDE(Data):
         self.num_boundary = num_boundary
         self.train_distribution = train_distribution
         self.anchors = None if anchors is None else anchors.astype(config.real(np))
+        if self.anchors is not None:
+            nprocs, rank = get_nprocs_and_rank()
+            self.anchors = array_ops_compat.padding_array(self.anchors, nprocs)
+            self.anchors = array_ops_compat.sub(self.anchors, nprocs, rank)
         self.exclusions = exclusions
 
         self.soln = solution
@@ -151,18 +156,34 @@ class PDE(Data):
         bcs_start = np.cumsum([0] + self.num_bcs)
         bcs_start = list(map(int, bcs_start))
         error_f = [fi[bcs_start[-1] :] for fi in f]
-        losses = [
-            loss_fn[i](bkd.zeros_like(error), error) for i, error in enumerate(error_f)    
-        ]
+        nprocs = dist.get_world_size()
+        if nprocs > 1 and not model.net.training:
+            losses = [
+                dde.losses.squared_error(bkd.zeros_like(error), error) for i, error in enumerate(error_f)
+            ]
+        else:
+            losses = [
+                loss_fn[i](bkd.zeros_like(error), error) for i, error in enumerate(error_f)
+            ]
         from paddle.fluid.framework import default_main_program
 
         for i, bc in enumerate(self.bcs):
-            
+
             beg, end = bcs_start[i], bcs_start[i + 1]
             # The same BC points are used for training and testing.
             error = bc.error(self.train_x, inputs, outputs, beg, end)
-            losses.append(loss_fn[len(error_f) + i](bkd.zeros_like(error), error))
-        
+            if nprocs > 1 and not model.net.training:
+                losses.append(dde.losses.squared_error(bkd.zeros_like(error), error))
+            else:
+                losses.append(loss_fn[len(error_f) + i](bkd.zeros_like(error), error))
+        if nprocs > 1 and not model.net.training:
+            # gather and reduce to scalar
+            losses = [
+                gather_nprocs(item) for item in losses
+            ]
+            losses = [
+                bkd.reduce_mean(item) for item in losses
+            ]
         return losses
 
     @run_if_all_none("train_x", "train_y", "train_aux_vars")
@@ -176,6 +197,7 @@ class PDE(Data):
             self.train_aux_vars = self.auxiliary_var_fn(self.train_x).astype(
                 config.real(np)
             )
+        # print(f"self.train_x_all = {self.train_x_all.shape}")
         return self.train_x, self.train_y, self.train_aux_vars
 
     @run_if_all_none("test_x", "test_y", "test_aux_vars")
@@ -235,6 +257,9 @@ class PDE(Data):
                 X = self.geom.random_points(
                     self.num_domain, random=self.train_distribution
                 )
+            nprocs, rank = get_nprocs_and_rank()
+            X = array_ops_compat.padding_array(X, nprocs)
+            X = array_ops_compat.sub(X, nprocs, rank)
         if self.num_boundary > 0:
             if self.train_distribution == "uniform":
                 tmp = self.geom.uniform_boundary_points(self.num_boundary)
@@ -242,6 +267,9 @@ class PDE(Data):
                 tmp = self.geom.random_boundary_points(
                     self.num_boundary, random=self.train_distribution
                 )
+            nprocs, rank = get_nprocs_and_rank()
+            tmp = array_ops_compat.padding_array(tmp, nprocs)
+            tmp = array_ops_compat.sub(tmp, nprocs, rank)
             X = np.vstack((tmp, X))
         if self.anchors is not None:
             X = np.vstack((self.anchors, X))
@@ -267,6 +295,9 @@ class PDE(Data):
     def test_points(self):
         # TODO: Use different BC points from self.train_x_bc
         x = self.geom.uniform_points(self.num_test, boundary=False)
+        nprocs, rank = get_nprocs_and_rank()
+        x = array_ops_compat.padding_array(x, nprocs)
+        x = array_ops_compat.sub(x, nprocs, rank)
         x = np.vstack((self.train_x_bc, x))
         return x
 
