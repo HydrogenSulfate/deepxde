@@ -348,16 +348,19 @@ class VariableValue(Callback):
         self.epochs_since_last += 1
         if self.epochs_since_last >= self.period:
             self.epochs_since_last = 0
-            if (backend_name in ["paddle"]) and paddle.in_dynamic_mode():
-                self.on_train_begin()
+            if backend_name in ["paddle"]:
+                if paddle.in_dynamic_mode():
+                    self.on_train_begin()
+                else:
+                    self.value = self.model.extra_fetch_var
+                    print(
+                        self.model.train_state.epoch,
+                        utils.list_to_str(self.value, precision=self.precision),
+                        file=self.file,
+                    )
+                    self.file.flush()
             else:
-                self.value = self.model.extra_fetch_var
-                print(
-                    self.model.train_state.epoch,
-                    utils.list_to_str(self.value, precision=self.precision),
-                    file=self.file,
-                )
-                self.file.flush()
+                self.on_train_begin()
 
     def get_value(self):
         """Return the variable values."""

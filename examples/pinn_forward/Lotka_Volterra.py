@@ -4,15 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import integrate
 
-import os
-import deepxde.backend as bkd
 from deepxde.backend import backend_name
-from deepxde.config import set_random_seed
-set_random_seed(100)
-import os
-task_name = os.path.basename(__file__).split(".")[0]
-log_dir = f"./{task_name}"
-os.makedirs(f"{log_dir}", exist_ok=True)
+
 
 ub = 200
 rb = 20
@@ -49,7 +42,7 @@ data = dde.data.PDE(geom, ode_system, [], 3000, 2, num_test=3000)
 layer_size = [1] + [64] * 6 + [2]
 activation = "tanh"
 initializer = "Glorot normal"
-net = dde.nn.FNN(layer_size, activation, initializer, task_name)           
+net = dde.nn.FNN(layer_size, activation, initializer)           
   
 if backend_name == 'pytorch':
     import torch

@@ -418,7 +418,7 @@ class Fractional:
             if self.disc.meshtype == "static"
             else self.dynamic_dist2npts(self.geom.diam) + 1
         )
-        w = [bkd.constant(1.0, dtype=config.real(bkd.lib))]
+        w = [bkd.constant(1.0, dtype=config.real(bkd.lib)) if bkd.is_tensor(self.alpha) else 1.0]
         for j in range(1, n):
             w.append(w[-1] * (j - 1 - self.alpha) / j)
         return array_ops_compat.convert_to_array(w)
@@ -550,10 +550,10 @@ class Fractional:
             h = self.geom.diam / (self.disc.resolution[0] - 1)
             for i in range(1, self.disc.resolution[0] - 1):
                 # first order
-                int_mat[i, 1: i + 2] = np.squeeze(np.flipud(self.get_weight(i)))
+                int_mat[i, 1: i + 2] = np.flipud(self.get_weight(i))
                 int_mat[i, i - 1: -1] += self.get_weight(
                     self.disc.resolution[0] - 1 - i
-                ).numpy().squeeze()
+                )
                 # second order
                 # int_mat[i, 0:i+2] = np.flipud(self.modify_second_order(w=self.get_weight(i)))
                 # int_mat[i, i-1:] += self.modify_second_order(w=self.get_weight(self.disc.resolution[0]-1-i))

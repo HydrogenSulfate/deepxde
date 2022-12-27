@@ -236,6 +236,7 @@ def npfunc_range_autocache(func):
     def wrapper_nocache_auxiliary(X, beg, end, aux_var):
         return func(X[beg:end], aux_var[beg:end])
 
+    @wraps(func)
     def wrapper_cache(X, beg, end, _):
         if backend_name == "paddle": 
             if paddle.in_dynamic_mode():
