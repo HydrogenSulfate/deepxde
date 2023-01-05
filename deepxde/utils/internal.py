@@ -36,7 +36,7 @@ def run_if_all_none(*attr):
             if all(i is None for i in x) or \
                 hasattr(self, "alpha") and \
                 bkd.is_tensor(self.alpha) and \
-                ((bkd.get_preferred_backend() == "paddle" and not self.alpha.stop_gradient) or (bkd.get_preferred_backend() != "paddle")):
+                ((bkd.backend_name == "paddle" and not self.alpha.stop_gradient) or (bkd.backend_name != "paddle" and bkd.backend_name != "tensorflow.compat.v1")):
                 return func(self, *args, **kwargs)
             return x if len(x) > 1 else x[0]
 
