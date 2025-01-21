@@ -160,8 +160,8 @@ class DeepONet(NN):
             is a ``dict``, then the trunk net uses the rate `dropout_rate["trunk"]`,
             and the branch net uses `dropout_rate["branch"]`. Both `dropout_rate["trunk"]`
             and `dropout_rate["branch"]` should be ``float`` or lists of ``float``.
-            The list length should match the length of `layer_size_trunk` - 1 for the
-            trunk net and `layer_size_branch` - 2 for the branch net.
+            The list length should match the length of `layer_sizes_trunk` - 1 for the
+            trunk net and `layer_sizes_branch` - 2 for the branch net.
         trainable_branch: Boolean.
         trainable_trunk: Boolean or a list of booleans.
         num_outputs (integer): Number of outputs. In case of multiple outputs, i.e., `num_outputs` > 1,
@@ -210,7 +210,7 @@ class DeepONet(NN):
         super().__init__()
         if isinstance(trainable_trunk, (list, tuple)):
             if len(trainable_trunk) != len(layer_sizes_trunk) - 1:
-                raise ValueError("trainable_trunk does not match layer_size_trunk.")
+                raise ValueError("trainable_trunk does not match layer_sizes_trunk.")
 
         self.layer_size_func = layer_sizes_branch
         self.layer_size_loc = layer_sizes_trunk
@@ -321,7 +321,7 @@ class DeepONet(NN):
         if callable(self.layer_size_func[1]):
             # User-defined network
             return self.layer_size_func[1](self.X_func)
-        
+
         if self.stacked:
             # Stacked fully connected network
             return self._build_stacked_branch_net()
@@ -422,8 +422,7 @@ class DeepONet(NN):
         regularizer=None,
         trainable=True,
     ):
-        return tf.layers.dense(
-            inputs,
+        dense = tf.keras.layers.Dense(
             units,
             activation=activation,
             use_bias=use_bias,
@@ -431,6 +430,10 @@ class DeepONet(NN):
             kernel_regularizer=regularizer,
             trainable=trainable,
         )
+        out = dense(inputs)
+        if regularizer:
+            self.regularization_loss += tf.math.add_n(dense.losses)
+        return out
 
     def _stacked_dense(
         self, inputs, units, stack_size, activation=None, use_bias=True, trainable=True
@@ -487,11 +490,11 @@ class DeepONetCartesianProd(NN):
     """Deep operator network for dataset in the format of Cartesian product.
 
     Args:
-        layer_size_branch: A list of integers as the width of a fully connected network,
+        layer_sizes_branch: A list of integers as the width of a fully connected network,
             or `(dim, f)` where `dim` is the input dimension and `f` is a network
             function. The width of the last layer in the branch and trunk net
             should be the same for all strategies except "split_branch" and "split_trunk".
-        layer_size_trunk (list): A list of integers as the width of a fully connected
+        layer_sizes_trunk (list): A list of integers as the width of a fully connected
             network.
         activation: If `activation` is a ``string``, then the same activation is used in
             both trunk and branch nets. If `activation` is a ``dict``, then the trunk
@@ -502,8 +505,8 @@ class DeepONetCartesianProd(NN):
             is a ``dict``, then the trunk net uses the rate `dropout_rate["trunk"]`,
             and the branch net uses `dropout_rate["branch"]`. Both `dropout_rate["trunk"]`
             and `dropout_rate["branch"]` should be ``float`` or lists of ``float``.
-            The list length should match the length of `layer_size_trunk` - 1 for the
-            trunk net and `layer_size_branch` - 2 for the branch net.
+            The list length should match the length of `layer_sizes_trunk` - 1 for the
+            trunk net and `layer_sizes_branch` - 2 for the branch net.
         num_outputs (integer): Number of outputs. In case of multiple outputs, i.e., `num_outputs` > 1,
             `multi_output_strategy` below should be set.
         multi_output_strategy (str or None): ``None``, "independent", "split_both", "split_branch" or
@@ -534,8 +537,8 @@ class DeepONetCartesianProd(NN):
 
     def __init__(
         self,
-        layer_size_branch,
-        layer_size_trunk,
+        layer_sizes_branch,
+        layer_sizes_trunk,
         activation,
         kernel_initializer,
         regularization=None,
@@ -544,8 +547,8 @@ class DeepONetCartesianProd(NN):
         multi_output_strategy=None,
     ):
         super().__init__()
-        self.layer_size_func = layer_size_branch
-        self.layer_size_loc = layer_size_trunk
+        self.layer_size_func = layer_sizes_branch
+        self.layer_size_loc = layer_sizes_trunk
         if isinstance(activation, dict):
             self.activation_branch = activations.get(activation["branch"])
             self.activation_trunk = activations.get(activation["trunk"])
@@ -559,24 +562,24 @@ class DeepONetCartesianProd(NN):
         else:
             self.dropout_rate_branch = self.dropout_rate_trunk = dropout_rate
         if isinstance(self.dropout_rate_branch, list):
-            if not (len(layer_size_branch) - 2) == len(self.dropout_rate_branch):
+            if not (len(layer_sizes_branch) - 2) == len(self.dropout_rate_branch):
                 raise ValueError(
                     "Number of dropout rates of branch net must be "
-                    f"equal to {len(layer_size_branch) - 2}"
+                    f"equal to {len(layer_sizes_branch) - 2}"
                 )
         else:
             self.dropout_rate_branch = [self.dropout_rate_branch] * (
-                len(layer_size_branch) - 2
+                len(layer_sizes_branch) - 2
             )
         if isinstance(self.dropout_rate_trunk, list):
-            if not (len(layer_size_trunk) - 1) == len(self.dropout_rate_trunk):
+            if not (len(layer_sizes_trunk) - 1) == len(self.dropout_rate_trunk):
                 raise ValueError(
                     "Number of dropout rates of trunk net must be "
-                    f"equal to {len(layer_size_trunk) - 1}"
+                    f"equal to {len(layer_sizes_trunk) - 1}"
                 )
         else:
             self.dropout_rate_trunk = [self.dropout_rate_trunk] * (
-                len(layer_size_trunk) - 1
+                len(layer_sizes_trunk) - 1
             )
         self._inputs = None
 
@@ -637,12 +640,11 @@ class DeepONetCartesianProd(NN):
         else:
             # Fully connected network
             for i in range(1, len(self.layer_size_func) - 1):
-                y_func = tf.layers.dense(
+                y_func = self._dense(
                     y_func,
                     self.layer_size_func[i],
                     activation=self.activation_branch,
-                    kernel_initializer=self.kernel_initializer,
-                    kernel_regularizer=self.regularizer,
+                    regularizer=self.regularizer,
                 )
                 if self.dropout_rate_branch[i - 1] > 0:
                     y_func = tf.layers.dropout(
@@ -650,11 +652,10 @@ class DeepONetCartesianProd(NN):
                         rate=self.dropout_rate_branch[i - 1],
                         training=self.training,
                     )
-            y_func = tf.layers.dense(
+            y_func = self._dense(
                 y_func,
                 self.layer_size_func[-1],
-                kernel_initializer=self.kernel_initializer,
-                kernel_regularizer=self.regularizer,
+                regularizer=self.regularizer,
             )
         return y_func
 
@@ -664,12 +665,11 @@ class DeepONetCartesianProd(NN):
         if self._input_transform is not None:
             y_loc = self._input_transform(y_loc)
         for i in range(1, len(self.layer_size_loc)):
-            y_loc = tf.layers.dense(
+            y_loc = self._dense(
                 y_loc,
                 self.layer_size_loc[i],
                 activation=self.activation_trunk,
-                kernel_initializer=self.kernel_initializer,
-                kernel_regularizer=self.regularizer,
+                regularizer=self.regularizer,
             )
             if self.dropout_rate_trunk[i - 1] > 0:
                 y_loc = tf.layers.dropout(
@@ -687,3 +687,25 @@ class DeepONetCartesianProd(NN):
     @staticmethod
     def concatenate_outputs(ys):
         return tf.stack(ys, axis=2)
+
+    def _dense(
+        self,
+        inputs,
+        units,
+        activation=None,
+        use_bias=True,
+        regularizer=None,
+        trainable=True,
+    ):
+        dense = tf.keras.layers.Dense(
+            units,
+            activation=activation,
+            use_bias=use_bias,
+            kernel_initializer=self.kernel_initializer,
+            kernel_regularizer=regularizer,
+            trainable=trainable,
+        )
+        out = dense(inputs)
+        if regularizer:
+            self.regularization_loss += tf.math.add_n(dense.losses)
+        return out
